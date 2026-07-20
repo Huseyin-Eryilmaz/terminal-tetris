@@ -14,11 +14,11 @@ phase is a short-lived `feat/` branch ending in a tagged release.
 **Acceptance:** `uv run tetris` draws an empty well, echoes pressed keys
 live, and `Q` quits leaving the terminal usable.
 
-## Phase 1 — Board & piece model `v0.1.0-pre`
-- [ ] 10x20 grid (+2 hidden spawn rows), cell occupancy
-- [ ] Seven tetrominoes with four rotation states each
-- [ ] Collision test (`can_place`), locking, line clearing with gravity
-- [ ] Unit tests: single/multiple/gap clears, out-of-bounds, overlap
+## Phase 1 — Board & piece model `v0.1.0-pre` ✅
+- [X] 10x20 grid (+2 hidden spawn rows), cell occupancy
+- [X] Seven tetrominoes with four rotation states each
+- [X] Collision test (`can_place`), locking, line clearing with gravity
+- [X] Unit tests: single/multiple/gap clears, out-of-bounds, overlap
 
 **Acceptance:** the entire model is exercised headlessly; no rendering yet.
 
