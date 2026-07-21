@@ -30,11 +30,11 @@ live, and `Q` quits leaving the terminal usable.
 
 **Acceptance:** a playable game of classic Tetris in the terminal.
 
-## Phase 3 — Rule sets `v0.2.0`
-- [ ] `RuleSet` dataclass with `classic()` and `modern()` profiles
-- [ ] Two piece generators: pure random and 7-bag
-- [ ] Lock delay (modern only), reset on movement
-- [ ] Parametrized tests covering both profiles
+## Phase 3 — Rule sets `v0.2.0` ✅
+- [X] `RuleSet` dataclass with `classic()` and `modern()` profiles
+- [X] Two piece generators: pure random and 7-bag
+- [X] Lock delay (modern only), reset on movement
+- [X] Parametrized tests covering both profiles
 
 **Acceptance:** both modes playable and behaviourally distinct in tests.
 
