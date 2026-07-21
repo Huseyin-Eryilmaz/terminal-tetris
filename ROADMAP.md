@@ -38,10 +38,10 @@ live, and `Q` quits leaving the terminal usable.
 
 **Acceptance:** both modes playable and behaviourally distinct in tests.
 
-## Phase 4 — SRS & wall kicks `v0.3.0`
-- [ ] SRS kick tables (JLSTZ set, I set, O exempt)
-- [ ] Rotation tries five candidate offsets, applies the first that fits
-- [ ] Tests for known kick scenarios, including the T-spin setup
+## Phase 4 — SRS & wall kicks `v0.3.0` ✅
+- [X] SRS kick tables (JLSTZ set, I set, O exempt)
+- [X] Rotation tries five candidate offsets, applies the first that fits
+- [X] Tests for known kick scenarios, including the T-spin setup
 
 **Acceptance:** wall-kick cases verified against the SRS specification.
 
