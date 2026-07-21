@@ -22,11 +22,11 @@ live, and `Q` quits leaving the terminal usable.
 
 **Acceptance:** the entire model is exercised headlessly; no rendering yet.
 
-## Phase 2 — Playable loop `v0.1.0`
-- [ ] Gravity, soft drop, hard drop, horizontal movement
-- [ ] Spawn → fall → lock → clear → spawn state machine
-- [ ] Top-out detection
-- [ ] Board rendering wired to the renderer
+## Phase 2 — Playable loop `v0.1.0` ✅
+- [X] Gravity, soft drop, hard drop, horizontal movement
+- [X] Spawn → fall → lock → clear → spawn state machine
+- [X] Top-out detection
+- [X] Board rendering wired to the renderer
 
 **Acceptance:** a playable game of classic Tetris in the terminal.
 
