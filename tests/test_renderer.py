@@ -29,3 +29,23 @@ def test_frame_box_title_is_embedded_in_the_top_line():
     box = frame_box(20, 5, title="TETRIS")
     assert "TETRIS" in box[0]
     assert box[0].count("┌") == 1 and box[0].count("┐") == 1
+
+
+def test_render_game_produces_a_full_frame():
+    """The frame builder is pure: game state in, list of strings out —
+    so the whole display can be checked without a terminal."""
+    import re
+
+    from tetris.__main__ import render_game
+    from tetris.core.game import Game
+
+    game = Game(seed=3)
+    lines = render_game(game)
+    plain = [re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", line) for line in lines]
+
+    assert "TETRIS" in plain[1]
+    assert plain[1].startswith("┌") and plain[1].endswith("┐")
+    assert any("LINES  0" in line for line in plain)
+    # 20 visible rows between the top and bottom borders
+    field = [ln for ln in plain if ln.startswith("│")]
+    assert len(field) == 20

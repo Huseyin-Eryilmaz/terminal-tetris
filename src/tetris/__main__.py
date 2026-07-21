@@ -1,65 +1,97 @@
-"""Entry point: the frame loop that will host the game.
+"""Entry point: the frame loop that connects keyboard, rules and screen.
 
-Phase 0 proves the shell works end to end — a fixed-rate loop, a drawn
-well, and live keyboard echo — without any game logic behind it yet.
+Its whole job is translation. Keys become `Action`s, elapsed time becomes
+a `tick`, and game state becomes a list of strings. No rule of Tetris is
+decided here — that logic lives in `core/`, which is what keeps this file
+readable and the rules testable.
 """
 
 from __future__ import annotations
 
 import time
 
-from tetris.core.constants import (
-    BOARD_VISIBLE_HEIGHT,
-    BOARD_WIDTH,
-    FRAMES_PER_SECOND,
-)
+from tetris.core.constants import BOARD_WIDTH, FRAMES_PER_SECOND
+from tetris.core.game import Action, Game, GameState
 from tetris.ui.input import Key, KeyReader
-from tetris.ui.renderer import COLORS, EMPTY, Screen, colored, frame_box
+from tetris.ui.renderer import BLOCK, COLORS, EMPTY, Screen, colored
 
 FRAME_DURATION = 1 / FRAMES_PER_SECOND
 
+# Keys that map straight onto a game action.
+ACTION_KEYS = {
+    Key.LEFT: Action.MOVE_LEFT,
+    Key.RIGHT: Action.MOVE_RIGHT,
+    Key.UP: Action.ROTATE_CW,
+    Key.X: Action.ROTATE_CW,
+    Key.Z: Action.ROTATE_CCW,
+    Key.SPACE: Action.HARD_DROP,
+    Key.DOWN: Action.SOFT_DROP,
+}
 
-def build_frame(last_keys: list[Key], frame_count: int) -> list[str]:
-    """Assembles the Phase 0 test picture: an empty well plus diagnostics."""
-    well = frame_box(BOARD_WIDTH * 2, BOARD_VISIBLE_HEIGHT, title="TETRIS")
 
-    # Fill the inside of the box with the empty-cell pattern.
-    for row in range(1, BOARD_VISIBLE_HEIGHT + 1):
-        cells = colored(EMPTY * BOARD_WIDTH, COLORS["ghost"])
-        border = colored("│", COLORS["frame"])
-        well[row] = border + cells + border
+def render_game(game: Game) -> list[str]:
+    """Turns the game state into the lines of one frame."""
+    frame_color = COLORS["frame"]
+    inner_width = BOARD_WIDTH * 2
 
-    keys_text = " ".join(key.name for key in last_keys) if last_keys else "-"
-    return [
-        "",
-        *well,
-        "",
-        colored(f"  frame {frame_count}", COLORS["text"]),
-        colored(f"  keys  {keys_text}", COLORS["accent"]),
-        colored("  Q to quit", COLORS["text"]),
-    ]
+    lines = [""]
+    lines.append(colored("┌" + " TETRIS ".center(inner_width, "─") + "┐", frame_color))
+
+    for row in game.visible_cells():
+        cells = "".join(
+            colored(BLOCK, COLORS[cell]) if cell else colored(EMPTY, COLORS["ghost"])
+            for cell in row
+        )
+        border = colored("│", frame_color)
+        lines.append(border + cells + border)
+
+    lines.append(colored("└" + "─" * inner_width + "┘", frame_color))
+    lines.append("")
+    lines.append(colored(f"  LINES  {game.lines_cleared}", COLORS["text"]))
+    lines.append(colored(f"  PIECES {game.pieces_placed}", COLORS["text"]))
+    lines.append("")
+
+    if game.state is GameState.GAME_OVER:
+        lines.append(colored("  GAME OVER — R restart, Q quit", COLORS["accent"]))
+    else:
+        lines.append(colored("  <-/-> move   up/X rotate   Z ccw", COLORS["text"]))
+        controls = "  down soft drop   SPACE hard drop   Q quit"
+        lines.append(colored(controls, COLORS["text"]))
+    return lines
 
 
 def main() -> None:
-    frame_count = 0
-    last_keys: list[Key] = []
+    game = Game()
 
     with Screen() as screen, KeyReader() as keyboard:
         running = True
+        previous = time.perf_counter()
+
         while running:
             frame_start = time.perf_counter()
+            dt = frame_start - previous
+            previous = frame_start
 
             keys = keyboard.read()
-            if keys:
-                last_keys = keys
             if Key.Q in keys or Key.ESCAPE in keys:
                 running = False
+            if Key.R in keys:
+                game = Game()
 
-            frame_count += 1
-            screen.draw(build_frame(last_keys, frame_count))
+            for key in keys:
+                if action := ACTION_KEYS.get(key):
+                    game.apply(action)
 
-            # Fixed-rate loop: sleep off whatever is left of the frame's
-            # budget, so the game runs at the same speed on any machine.
+            # Soft drop is a held key, but a terminal only reports presses,
+            # never releases. So it lapses as soon as a frame arrives with
+            # no DOWN in it — holding the key works because the OS repeats
+            # the keystroke.
+            if Key.DOWN not in keys:
+                game.release_soft_drop()
+
+            game.tick(dt)
+            screen.draw(render_game(game))
+
             elapsed = time.perf_counter() - frame_start
             if (remaining := FRAME_DURATION - elapsed) > 0:
                 time.sleep(remaining)
