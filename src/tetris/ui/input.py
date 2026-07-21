@@ -20,6 +20,8 @@ sequence (ESC [ A). Both are decoded into the same `Key` enum here, so the
 rest of the game never learns which OS it is on.
 """
 
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 import sys
@@ -94,23 +96,26 @@ class KeyReader:
     def __init__(self) -> None:
         self._is_windows = sys.platform == "win32"
         self._fd: int | None = None
-        self._original_mode = None
+        self._original_mode: list | None = None
 
     def __enter__(self) -> KeyReader:
         if not self._is_windows:
             import termios
             import tty
 
-            self._fd = sys.stdin.fileno()
-            self._original_mode = termios.tcgetattr(self._fd)
-            tty.setcbreak(self._fd)
+            fd = sys.stdin.fileno()
+            self._original_mode = termios.tcgetattr(fd)
+            tty.setcbreak(fd)
+            self._fd = fd
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        if not self._is_windows and self._fd is not None:
-            import termios
+        if self._is_windows or self._fd is None or self._original_mode is None:
+            return
 
-            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._original_mode)
+        import termios
+
+        termios.tcsetattr(self._fd, termios.TCSADRAIN, self._original_mode)
 
     def read(self) -> list[Key]:
         """Returns every key pressed since the last call (possibly empty)."""

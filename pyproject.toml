@@ -26,6 +26,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tetris"]
 
+[tool.pyright]
+# The input layer deliberately touches both Unix-only (termios, tty) and
+# Windows-only (msvcrt) modules, guarded at runtime by a platform check.
+# Analysing as Linux keeps the Unix branch honest; the msvcrt branch is
+# silenced where it is used.
+pythonPlatform = "Linux"
+reportAttributeAccessIssue = "warning"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
