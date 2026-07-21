@@ -75,11 +75,22 @@ class Screen:
         sys.stdout.flush()
 
     def draw(self, lines: list[str]) -> None:
-        """Prints one frame: cursor home, then every line, in a single write."""
-        # Each line is padded with an erase-to-end-of-line so leftovers from
-        # a longer previous frame don't linger.
-        frame = CURSOR_HOME + "\n".join(f"{line}{ESC}K" for line in lines)
-        sys.stdout.write(frame)
+        """Prints one frame: cursor home, then every line, in a single write.
+
+        Two details keep the frame pinned in place:
+
+        - Lines are separated by `\\r\\n`, not `\\n`: in cbreak mode the
+          terminal does not translate a newline into a carriage return, so
+          a bare `\\n` moves down a row while leaving the cursor in the
+          same column.
+        - The last line has no trailing newline at all. Ending a frame
+          with one pushes the cursor past the bottom of the screen, the
+          terminal scrolls, and "cursor home" then points somewhere above
+          the frame — so the next frame lands underneath the previous one
+          instead of on top of it.
+        """
+        body = "\r\n".join(f"{line}{ESC}K" for line in lines)
+        sys.stdout.write(CURSOR_HOME + body)
         sys.stdout.flush()
 
 
