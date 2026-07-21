@@ -27,6 +27,7 @@ from tetris.core.bag import PieceQueue, make_generator
 from tetris.core.board import Board
 from tetris.core.constants import BOARD_HIDDEN_ROWS, BOARD_WIDTH
 from tetris.core.piece import Piece
+from tetris.core.rotation import rotate_classic, rotate_with_kicks
 from tetris.core.rules import RuleSet
 
 
@@ -81,6 +82,11 @@ class Game:
         # restart that countdown by nudging the piece.
         self._lock_timer = 0.0
         self._lock_resets = 0
+        # T-spin detection (Phase 5) needs to know how the piece arrived at
+        # its final position: only a rotation — especially one that needed
+        # a late kick — can produce a spin.
+        self.last_action_was_rotation = False
+        self.last_kick_index = 0
 
         self.current: Piece = self._spawn_piece()
 
@@ -119,6 +125,8 @@ class Game:
         self._fall_timer = 0.0
         self._lock_timer = 0.0
         self._lock_resets = 0
+        self.last_action_was_rotation = False
+        self.last_kick_index = 0
 
         if not self.board.can_place(self.current):
             self.state = GameState.GAME_OVER
@@ -136,20 +144,22 @@ class Game:
         candidate = self.current.moved(drow, dcol)
         if self.board.can_place(candidate):
             self.current = candidate
+            self.last_action_was_rotation = False
             self._on_piece_moved()
             return True
         return False
 
     def _try_rotate(self, steps: int) -> bool:
-        """Classic rotation: if the rotated piece doesn't fit, nothing
-        happens. Phase 4 replaces this with SRS wall kicks, which try a
-        handful of nearby offsets before giving up."""
-        candidate = self.current.rotated(steps)
-        if self.board.can_place(candidate):
-            self.current = candidate
-            self._on_piece_moved()
-            return True
-        return False
+        """Rotates the piece according to the active rotation system."""
+        rotate = rotate_with_kicks if self.rules.use_srs else rotate_classic
+        result = rotate(self.current, steps, self.board.can_place)
+        if result is None:
+            return False
+
+        self.current, self.last_kick_index = result
+        self.last_action_was_rotation = True
+        self._on_piece_moved()
+        return True
 
     def _on_piece_moved(self) -> None:
         """Restarts the lock countdown after a successful move.

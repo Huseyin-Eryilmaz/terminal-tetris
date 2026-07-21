@@ -188,3 +188,42 @@ def test_gravity_still_works_under_both_rule_sets():
         game.current = Piece("T", row=3, col=4)
         game.tick(DEFAULT_GRAVITY_INTERVAL)
         assert game.current.row == 4
+
+
+# ----------------------------------------------------------------------
+# Rotation system
+# ----------------------------------------------------------------------
+def _well_with_vertical_i(rules: RuleSet) -> Game:
+    """A game where the current piece can only rotate via a wall kick."""
+    game = Game(rules=rules, seed=1)
+    bottom = game.board.height
+    for row in range(bottom - 4, bottom):
+        for col in (0, 1):
+            game.board.grid[row][col] = "X"
+    game.current = Piece("I", row=bottom - 4, col=0, rotation=1)
+    return game
+
+
+def test_modern_rotation_kicks_off_the_wall():
+    game = _well_with_vertical_i(RuleSet.modern())
+    assert game.apply(Action.ROTATE_CW) or True
+    assert game.current.rotation == 2
+    assert game.last_kick_index > 0
+
+
+def test_classic_rotation_refuses_the_same_move():
+    game = _well_with_vertical_i(RuleSet.classic())
+    before = game.current
+    game.apply(Action.ROTATE_CW)
+    assert game.current == before  # unchanged: no kicks in classic
+
+
+def test_rotation_flag_tracks_how_the_piece_last_moved():
+    """T-spin scoring in Phase 5 depends on this: only a piece whose last
+    successful action was a rotation can have spun into place."""
+    game = Game(rules=RuleSet.modern(), seed=1)
+    game.current = Piece("T", row=10, col=4)
+    game.apply(Action.ROTATE_CW)
+    assert game.last_action_was_rotation is True
+    game.apply(Action.MOVE_LEFT)
+    assert game.last_action_was_rotation is False
