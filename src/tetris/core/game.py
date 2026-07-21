@@ -23,9 +23,11 @@ from __future__ import annotations
 import random
 from enum import Enum, auto
 
+from tetris.core.bag import PieceQueue, make_generator
 from tetris.core.board import Board
 from tetris.core.constants import BOARD_HIDDEN_ROWS, BOARD_WIDTH
-from tetris.core.piece import PIECE_TYPES, Piece
+from tetris.core.piece import Piece
+from tetris.core.rules import RuleSet
 
 
 class Action(Enum):
@@ -54,19 +56,31 @@ SOFT_DROP_MULTIPLIER = 20
 class Game:
     """A single game in progress."""
 
-    def __init__(self, seed: int | None = None) -> None:
+    def __init__(self, rules: RuleSet | None = None, seed: int | None = None) -> None:
         # Seeded RNG: a given seed replays the exact same sequence of
         # pieces, which makes bugs reproducible and tests deterministic.
         self.rng = random.Random(seed)
+        self.rules = rules if rules is not None else RuleSet.modern()
 
         self.board = Board()
         self.state = GameState.PLAYING
         self.lines_cleared = 0
         self.pieces_placed = 0
 
+        self.queue = PieceQueue(
+            make_generator(self.rules.use_bag_randomizer, self.rng),
+            preview_size=self.rules.next_queue_size,
+        )
+
         self.gravity_interval = DEFAULT_GRAVITY_INTERVAL
         self._fall_timer = 0.0
         self._soft_dropping = False
+
+        # Lock delay bookkeeping. `_lock_timer` counts up while the piece
+        # rests on something; `_lock_resets` caps how often the player may
+        # restart that countdown by nudging the piece.
+        self._lock_timer = 0.0
+        self._lock_resets = 0
 
         self.current: Piece = self._spawn_piece()
 
@@ -74,9 +88,8 @@ class Game:
     # Piece lifecycle
     # ------------------------------------------------------------------
     def _next_kind(self) -> str:
-        """Which tetromino comes next. Pure random for now; Phase 3 adds
-        the 7-bag generator behind this same call."""
-        return self.rng.choice(PIECE_TYPES)
+        """Which tetromino comes next, according to this rule set."""
+        return self.queue.pop()
 
     def _spawn_piece(self) -> Piece:
         """Places a new piece in the hidden rows, horizontally centred.
@@ -104,6 +117,8 @@ class Game:
 
         self.current = self._spawn_piece()
         self._fall_timer = 0.0
+        self._lock_timer = 0.0
+        self._lock_resets = 0
 
         if not self.board.can_place(self.current):
             self.state = GameState.GAME_OVER
@@ -121,6 +136,7 @@ class Game:
         candidate = self.current.moved(drow, dcol)
         if self.board.can_place(candidate):
             self.current = candidate
+            self._on_piece_moved()
             return True
         return False
 
@@ -131,8 +147,27 @@ class Game:
         candidate = self.current.rotated(steps)
         if self.board.can_place(candidate):
             self.current = candidate
+            self._on_piece_moved()
             return True
         return False
+
+    def _on_piece_moved(self) -> None:
+        """Restarts the lock countdown after a successful move.
+
+        This is what makes modern Tetris forgiving: a piece resting on the
+        stack can still be slid or spun into place. The reset only counts
+        while the piece is actually grounded, and only `max_lock_resets`
+        times — otherwise spinning in place would postpone locking forever.
+        """
+        if self.rules.lock_delay <= 0 or not self._is_grounded():
+            return
+        if self._lock_resets < self.rules.max_lock_resets:
+            self._lock_resets += 1
+            self._lock_timer = 0.0
+
+    def _is_grounded(self) -> bool:
+        """Is the piece resting on the stack or the floor right now?"""
+        return not self.board.can_place(self.current.moved(drow=1))
 
     def ghost_position(self) -> Piece:
         """Where the current piece would land if dropped right now."""
@@ -180,8 +215,19 @@ class Game:
         frame runs long (or gravity is very fast), the piece must fall
         every row it owes, not just one.
         """
-        if self.state is not GameState.PLAYING:
+        # A grounded piece is on the lock clock, not the fall clock.
+        if self._is_grounded():
+            if self.rules.lock_delay <= 0:
+                self._lock_current()  # classic: lands and sticks at once
+                return
+            self._lock_timer += dt
+            if self._lock_timer >= self.rules.lock_delay:
+                self._lock_current()
             return
+
+        # Airborne: reset the lock clock so a piece that slides off an
+        # edge gets its full delay back when it lands again.
+        self._lock_timer = 0.0
 
         interval = self.gravity_interval
         if self._soft_dropping:
@@ -191,9 +237,7 @@ class Game:
         while self._fall_timer >= interval:
             self._fall_timer -= interval
             if not self._try_move(drow=1):
-                # Nowhere to fall: the piece has landed.
-                self._lock_current()
-                return
+                return  # landed; the lock clock takes over next tick
 
     # ------------------------------------------------------------------
     # Rendering support
