@@ -8,10 +8,12 @@ readable and the rules testable.
 
 from __future__ import annotations
 
+import argparse
 import time
 
 from tetris.core.constants import BOARD_WIDTH, FRAMES_PER_SECOND
 from tetris.core.game import Action, Game, GameState
+from tetris.core.rules import RULE_SETS
 from tetris.ui.input import Key, KeyReader
 from tetris.ui.renderer import BLOCK, COLORS, EMPTY, Screen, colored
 
@@ -46,9 +48,12 @@ def render_game(game: Game) -> list[str]:
         lines.append(border + cells + border)
 
     lines.append(colored("└" + "─" * inner_width + "┘", frame_color))
-    lines.append("")
+    lines.append(colored(f"  MODE   {game.rules.name}", COLORS["accent"]))
     lines.append(colored(f"  LINES  {game.lines_cleared}", COLORS["text"]))
     lines.append(colored(f"  PIECES {game.pieces_placed}", COLORS["text"]))
+
+    preview = " ".join(game.queue.preview())
+    lines.append(colored(f"  NEXT   {preview}", COLORS["text"]))
     lines.append("")
 
     if game.state is GameState.GAME_OVER:
@@ -61,7 +66,17 @@ def render_game(game: Game) -> list[str]:
 
 
 def main() -> None:
-    game = Game()
+    parser = argparse.ArgumentParser(description="Tetris in the terminal")
+    parser.add_argument(
+        "--mode",
+        choices=sorted(RULE_SETS),
+        default="modern",
+        help="rule set: modern (Guideline) or classic (1984-style)",
+    )
+    args = parser.parse_args()
+    rules = RULE_SETS[args.mode]()
+
+    game = Game(rules=rules)
 
     with Screen() as screen, KeyReader() as keyboard:
         running = True
