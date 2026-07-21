@@ -126,14 +126,23 @@ class KeyReader:
     def _read_windows(self) -> list[Key]:
         import msvcrt
 
+        # Bound once so the platform-specific ignores stay in one place;
+        # pyright analyses this file as Linux (see pyproject.toml), where
+        # msvcrt does not exist.
+        kbhit = msvcrt.kbhit  # type: ignore
+        getwch = msvcrt.getwch  # type: ignore
+
         keys: list[Key] = []
-        while msvcrt.kbhit():
-            char = msvcrt.getwch()
-            if char in ("\x00", "\xe0"):  # arrow-key prefix
-                if msvcrt.kbhit():
-                    code = msvcrt.getwch()
-                    if arrow := _WINDOWS_ARROWS.get(code):
-                        keys.append(arrow)
+        while kbhit():
+            char = getwch()
+            if char in ("\x00", "\xe0"):
+                # Arrow keys arrive as two characters. The second one is
+                # already on its way, so read it unconditionally: asking
+                # kbhit() first can return False in the gap between the
+                # two bytes, which silently swallows the keypress.
+                code = getwch()
+                if arrow := _WINDOWS_ARROWS.get(code):
+                    keys.append(arrow)
                 continue
             if char == "\x1b":
                 keys.append(Key.ESCAPE)
