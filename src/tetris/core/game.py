@@ -215,6 +215,9 @@ class Game:
         frame runs long (or gravity is very fast), the piece must fall
         every row it owes, not just one.
         """
+        if self.state is not GameState.PLAYING:
+            return
+
         # A grounded piece is on the lock clock, not the fall clock.
         if self._is_grounded():
             if self.rules.lock_delay <= 0:
