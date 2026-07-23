@@ -11,6 +11,7 @@ import random
 import pytest
 
 from tetris.core.bag import make_generator
+from tetris.core.constants import BOARD_HIDDEN_ROWS
 from tetris.core.game import (
     DEFAULT_GRAVITY_INTERVAL,
     Action,
@@ -227,3 +228,131 @@ def test_rotation_flag_tracks_how_the_piece_last_moved():
     assert game.last_action_was_rotation is True
     game.apply(Action.MOVE_LEFT)
     assert game.last_action_was_rotation is False
+
+
+# ----------------------------------------------------------------------
+# Hold
+# ----------------------------------------------------------------------
+def test_holding_stashes_the_piece_and_brings_the_next_one():
+    game = Game(rules=RuleSet.modern(), seed=1)
+    stashed = game.current.kind
+    upcoming = game.queue.preview()[0]
+
+    game.apply(Action.HOLD)
+
+    assert game.hold == stashed
+    assert game.current.kind == upcoming
+
+
+def test_holding_a_second_time_swaps_the_two_pieces():
+    game = Game(rules=RuleSet.modern(), seed=1)
+    first = game.current.kind
+    game.apply(Action.HOLD)
+    second = game.current.kind
+
+    game._hold_used = False  # a lock would normally clear this
+    game.apply(Action.HOLD)
+
+    assert game.hold == second
+    assert game.current.kind == first
+
+
+def test_hold_is_allowed_only_once_per_piece():
+    """Otherwise a player could swap back and forth endlessly, effectively
+    choosing any piece they liked."""
+    game = Game(rules=RuleSet.modern(), seed=1)
+    game.apply(Action.HOLD)
+    after_first = game.current.kind
+    game.apply(Action.HOLD)  # refused
+    assert game.current.kind == after_first
+
+
+def test_locking_a_piece_restores_the_right_to_hold():
+    game = Game(rules=RuleSet.modern(), seed=1)
+    game.apply(Action.HOLD)
+    game.apply(Action.HARD_DROP)
+    before = game.current.kind
+    game.apply(Action.HOLD)
+    assert game.current.kind != before
+
+
+def test_a_held_piece_returns_at_spawn_position_not_where_it_was():
+    """Hold is not a teleport: manoeuvring a piece and then stashing it
+    must not preserve that hard-won position."""
+    game = Game(rules=RuleSet.modern(), seed=1)
+    for _ in range(3):
+        game.apply(Action.MOVE_LEFT)
+    game.tick(2.0)
+    moved_col = game.current.col
+
+    game.apply(Action.HOLD)
+    game._hold_used = False
+    game.apply(Action.HOLD)
+
+    assert game.current.col != moved_col or game.current.row == 0
+
+
+def test_classic_mode_has_no_hold():
+    game = Game(rules=RuleSet.classic(), seed=1)
+    before = game.current.kind
+    game.apply(Action.HOLD)
+    assert game.hold is None
+    assert game.current.kind == before
+
+
+# ----------------------------------------------------------------------
+# Ghost piece
+# ----------------------------------------------------------------------
+def test_modern_shows_a_ghost_where_the_piece_would_land():
+    game = Game(rules=RuleSet.modern(), seed=1)
+    game.current = Piece("O", row=2, col=4)
+    ghost = game.ghost_cells()
+    assert ghost
+    assert max(row for row, _ in ghost) == game.board.height - BOARD_HIDDEN_ROWS - 1
+
+
+def test_classic_shows_no_ghost():
+    game = Game(rules=RuleSet.classic(), seed=1)
+    game.current = Piece("O", row=2, col=4)
+    assert game.ghost_cells() == set()
+
+
+def test_a_resting_piece_casts_no_ghost():
+    """Drawing a shadow underneath a piece that has already landed would
+    just be a duplicate of the piece itself."""
+    game = Game(rules=RuleSet.modern(), seed=1)
+    game.current = Piece("O", row=game.board.height - 2, col=4)
+    assert game.ghost_cells() == set()
+
+
+# ----------------------------------------------------------------------
+# Scoring integration
+# ----------------------------------------------------------------------
+def test_clearing_a_line_in_a_real_game_adds_score():
+    game = Game(rules=RuleSet.modern(), seed=1)
+    bottom = game.board.height - 1
+    for col in range(game.board.width):
+        if col not in (5, 6):
+            game.board.grid[bottom][col] = "X"
+    game.current = Piece("O", row=bottom - 2, col=4)
+
+    game.apply(Action.HARD_DROP)
+
+    assert game.scorer.lines_cleared == 1
+    assert game.scorer.score > 0
+    assert game.last_event is not None
+    assert "SINGLE" in game.last_event.describe()
+
+
+def test_gravity_follows_the_level():
+    """Setting the level directly would not survive the next lock, since
+    it is derived from the line count — so the lines are what we fake."""
+    game = Game(rules=RuleSet.modern(), seed=1)
+    slow = game.gravity_interval
+
+    game.scorer.lines_cleared = 90  # level 10 on the next lock
+    game.current = Piece("O", row=game.board.height - 2, col=4)
+    game.tick(1.0)
+
+    assert game.scorer.level == 10
+    assert game.gravity_interval < slow

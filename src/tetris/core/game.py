@@ -14,8 +14,8 @@ The falling-piece lifecycle is a small state machine:
 
 Timing note: gravity is measured in seconds, not frames. Tying it to
 frames would mean the game runs at different speeds on machines that
-can't keep up — and later, at high levels, a piece needs to fall faster
-than one row per frame anyway.
+can't keep up — and at high levels, a piece needs to fall faster than
+one row per frame anyway.
 """
 
 from __future__ import annotations
@@ -29,6 +29,13 @@ from tetris.core.constants import BOARD_HIDDEN_ROWS, BOARD_WIDTH
 from tetris.core.piece import Piece
 from tetris.core.rotation import rotate_classic, rotate_with_kicks
 from tetris.core.rules import RuleSet
+from tetris.core.scoring import (
+    ScoreEvent,
+    Scorer,
+    SpinType,
+    detect_spin,
+    gravity_interval_for_level,
+)
 
 
 class Action(Enum):
@@ -40,6 +47,7 @@ class Action(Enum):
     ROTATE_CCW = auto()
     SOFT_DROP = auto()
     HARD_DROP = auto()
+    HOLD = auto()
 
 
 class GameState(Enum):
@@ -47,8 +55,8 @@ class GameState(Enum):
     GAME_OVER = auto()
 
 
-# Seconds per row at level 0. Later levels divide this (Phase 5).
-DEFAULT_GRAVITY_INTERVAL = 0.8
+# Seconds per row at level 1, before the level curve takes over.
+DEFAULT_GRAVITY_INTERVAL = 1.0
 
 # Soft drop falls this many times faster than normal gravity.
 SOFT_DROP_MULTIPLIER = 20
@@ -68,6 +76,15 @@ class Game:
         self.lines_cleared = 0
         self.pieces_placed = 0
 
+        self.scorer = Scorer(use_guideline=self.rules.use_srs)
+        self.last_event: ScoreEvent | None = None
+
+        # Hold: a piece parked for later. `_hold_used` enforces the rule
+        # that you may only swap once per piece — without it, holding
+        # repeatedly would let a player cycle the queue for free.
+        self.hold: str | None = None
+        self._hold_used = False
+
         self.queue = PieceQueue(
             make_generator(self.rules.use_bag_randomizer, self.rng),
             preview_size=self.rules.next_queue_size,
@@ -82,9 +99,9 @@ class Game:
         # restart that countdown by nudging the piece.
         self._lock_timer = 0.0
         self._lock_resets = 0
-        # T-spin detection (Phase 5) needs to know how the piece arrived at
-        # its final position: only a rotation — especially one that needed
-        # a late kick — can produce a spin.
+
+        # T-spin detection needs to know how the piece arrived at its
+        # final position: only a rotation can produce a spin.
         self.last_action_was_rotation = False
         self.last_kick_index = 0
 
@@ -97,16 +114,26 @@ class Game:
         """Which tetromino comes next, according to this rule set."""
         return self.queue.pop()
 
-    def _spawn_piece(self) -> Piece:
+    def _spawn_piece(self, kind: str | None = None) -> Piece:
         """Places a new piece in the hidden rows, horizontally centred.
 
-        Spawning above the visible field is what gives the player a moment
-        of warning: the piece slides into view rather than appearing on
-        top of the stack.
+        Spawning above the visible field gives the player a moment of
+        warning: the piece slides into view rather than appearing on top
+        of the stack. An explicit `kind` bypasses the queue, which is how
+        a held piece comes back.
         """
-        kind = self._next_kind()
+        if kind is None:
+            kind = self._next_kind()
         col = (BOARD_WIDTH - 4) // 2
         return Piece(kind, row=0, col=col)
+
+    def _reset_piece_state(self) -> None:
+        """Clears the per-piece timers and flags."""
+        self._fall_timer = 0.0
+        self._lock_timer = 0.0
+        self._lock_resets = 0
+        self.last_action_was_rotation = False
+        self.last_kick_index = 0
 
     def _lock_current(self) -> None:
         """Freezes the piece, clears full rows, and brings in the next one.
@@ -115,21 +142,50 @@ class Game:
         spawned piece has nowhere to go, which is the moment the player
         actually loses control — not when blocks merely reach high.
         """
+        # The spin must be judged before the rows disappear: clearing
+        # lines changes the very corners the detection looks at.
+        spin = (
+            detect_spin(self.board, self.current, self.last_action_was_rotation)
+            if self.rules.use_srs
+            else SpinType.NONE
+        )
+
         self.board.lock(self.current)
         self.pieces_placed += 1
 
         cleared = self.board.clear_lines()
         self.lines_cleared += len(cleared)
 
+        self.last_event = self.scorer.register_lock(len(cleared), spin)
+        self.gravity_interval = gravity_interval_for_level(self.scorer.level)
+
         self.current = self._spawn_piece()
-        self._fall_timer = 0.0
-        self._lock_timer = 0.0
-        self._lock_resets = 0
-        self.last_action_was_rotation = False
-        self.last_kick_index = 0
+        self._reset_piece_state()
+        self._hold_used = False
 
         if not self.board.can_place(self.current):
             self.state = GameState.GAME_OVER
+
+    def _try_hold(self) -> bool:
+        """Swaps the current piece with the held one — once per piece.
+
+        With an empty hold slot the current piece is stashed and the next
+        one arrives; otherwise the two trade places. Either way the new
+        piece starts at spawn position: holding is not a way to teleport
+        a piece you have already manoeuvred into place.
+        """
+        if not self.rules.allow_hold or self._hold_used:
+            return False
+
+        stashed = self.hold
+        self.hold = self.current.kind
+        self.current = self._spawn_piece(stashed) if stashed else self._spawn_piece()
+        self._hold_used = True
+        self._reset_piece_state()
+
+        if not self.board.can_place(self.current):
+            self.state = GameState.GAME_OVER
+        return True
 
     # ------------------------------------------------------------------
     # Movement primitives
@@ -208,8 +264,12 @@ class Game:
                 # while the key is held and speeds up gravity.
                 self._soft_dropping = True
             case Action.HARD_DROP:
-                self.current = self.ghost_position()
+                landing = self.ghost_position()
+                self.scorer.add_drop_points(landing.row - self.current.row, hard=True)
+                self.current = landing
                 self._lock_current()
+            case Action.HOLD:
+                self._try_hold()
 
     def release_soft_drop(self) -> None:
         self._soft_dropping = False
@@ -251,10 +311,25 @@ class Game:
             self._fall_timer -= interval
             if not self._try_move(drow=1):
                 return  # landed; the lock clock takes over next tick
+            if self._soft_dropping:
+                self.scorer.add_drop_points(1, hard=False)
 
     # ------------------------------------------------------------------
     # Rendering support
     # ------------------------------------------------------------------
+    def ghost_cells(self) -> set[tuple[int, int]]:
+        """Visible-field coordinates of the landing preview, if enabled."""
+        if not self.rules.show_ghost:
+            return set()
+        ghost = self.ghost_position()
+        if ghost == self.current:
+            return set()  # already resting: no point drawing a shadow
+        return {
+            (row - BOARD_HIDDEN_ROWS, col)
+            for row, col in ghost.cells
+            if row >= BOARD_HIDDEN_ROWS
+        }
+
     def visible_cells(self) -> list[list[str | None]]:
         """The visible field with the current piece composited in.
 
