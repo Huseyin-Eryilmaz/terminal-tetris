@@ -45,11 +45,11 @@ live, and `Q` quits leaving the terminal usable.
 
 **Acceptance:** wall-kick cases verified against the SRS specification.
 
-## Phase 5 — Modern mechanics `v0.4.0`
-- [ ] Hold piece (once per lock)
-- [ ] Ghost piece projection
-- [ ] Next queue (5 previews)
-- [ ] Guideline scoring, level curve, T-spin detection
+## Phase 5 — Modern mechanics `v0.4.0` ✅
+- [X] Hold piece (once per lock)
+- [X] Ghost piece projection
+- [X] Next queue (5 previews)
+- [X] Guideline scoring, level curve, T-spin detection
 
 **Acceptance:** each mechanic unit-tested; scoring matches the table.
 
