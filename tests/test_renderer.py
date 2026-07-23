@@ -36,12 +36,15 @@ def test_render_game_produces_a_full_frame():
     so the whole display can be checked without a terminal."""
     import re
 
-    from tetris.__main__ import render_game
-    from tetris.core.game import Game
+    from tetris.core.app import App
+    from tetris.ui.screens import render_playing
 
-    game = Game(seed=3)
-    lines = render_game(game)
+    app = App(seed=3)
+    app.start_game("modern")
+    lines = render_playing(app)
     plain = [re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", line) for line in lines]
+
+    assert "TETRIS" in plain[1]
 
     assert "TETRIS" in plain[1]
     assert plain[1].startswith("┌") and plain[1].endswith("┐")

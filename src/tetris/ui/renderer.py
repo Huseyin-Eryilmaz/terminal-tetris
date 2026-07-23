@@ -21,6 +21,7 @@ look like a squashed rectangle.
 
 from __future__ import annotations
 
+import shutil
 import sys
 
 ESC = "\033["
@@ -89,7 +90,9 @@ class Screen:
           the frame — so the next frame lands underneath the previous one
           instead of on top of it.
         """
-        body = "\r\n".join(f"{line}{ESC}K" for line in lines)
+        height = shutil.get_terminal_size(fallback=(80, 24)).lines
+        visible = lines[: height - 1]
+        body = "\r\n".join(f"{line}{ESC}K" for line in visible)
         sys.stdout.write(CURSOR_HOME + body)
         sys.stdout.flush()
 
