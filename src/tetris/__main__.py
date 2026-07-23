@@ -28,39 +28,56 @@ ACTION_KEYS = {
     Key.Z: Action.ROTATE_CCW,
     Key.SPACE: Action.HARD_DROP,
     Key.DOWN: Action.SOFT_DROP,
+    Key.C: Action.HOLD,
 }
+
+GHOST_CELL = "░░"
 
 
 def render_game(game: Game) -> list[str]:
     """Turns the game state into the lines of one frame."""
     frame_color = COLORS["frame"]
     inner_width = BOARD_WIDTH * 2
+    ghost = game.ghost_cells()
 
     lines = [""]
     lines.append(colored("┌" + " TETRIS ".center(inner_width, "─") + "┐", frame_color))
 
-    for row in game.visible_cells():
-        cells = "".join(
-            colored(BLOCK, COLORS[cell]) if cell else colored(EMPTY, COLORS["ghost"])
-            for cell in row
-        )
+    for row_index, row in enumerate(game.visible_cells()):
+        cells = ""
+        for col_index, cell in enumerate(row):
+            if cell:
+                cells += colored(BLOCK, COLORS[cell])
+            elif (row_index, col_index) in ghost:
+                cells += colored(GHOST_CELL, COLORS["ghost"])
+            else:
+                cells += colored(EMPTY, COLORS["ghost"])
         border = colored("│", frame_color)
         lines.append(border + cells + border)
 
     lines.append(colored("└" + "─" * inner_width + "┘", frame_color))
-    lines.append(colored(f"  MODE   {game.rules.name}", COLORS["accent"]))
-    lines.append(colored(f"  LINES  {game.lines_cleared}", COLORS["text"]))
-    lines.append(colored(f"  PIECES {game.pieces_placed}", COLORS["text"]))
-
-    preview = " ".join(game.queue.preview())
-    lines.append(colored(f"  NEXT   {preview}", COLORS["text"]))
     lines.append("")
+
+    scorer = game.scorer
+    lines.append(colored(f"  MODE   {game.rules.name}", COLORS["accent"]))
+    lines.append(colored(f"  SCORE  {scorer.score}", COLORS["accent"]))
+    lines.append(colored(f"  LEVEL  {scorer.level}", COLORS["text"]))
+    lines.append(colored(f"  LINES  {scorer.lines_cleared}", COLORS["text"]))
+
+    if game.rules.allow_hold:
+        lines.append(colored(f"  HOLD   {game.hold or '-'}", COLORS["text"]))
+    lines.append(colored(f"  NEXT   {' '.join(game.queue.preview())}", COLORS["text"]))
+
+    # The last scoring event, announced for as long as it stands.
+    event = game.last_event
+    headline = event.describe() if event else ""
+    lines.append(colored(f"  {headline}", COLORS["accent"]) if headline else "")
 
     if game.state is GameState.GAME_OVER:
         lines.append(colored("  GAME OVER — R restart, Q quit", COLORS["accent"]))
     else:
         lines.append(colored("  <-/-> move   up/X rotate   Z ccw", COLORS["text"]))
-        controls = "  down soft drop   SPACE hard drop   Q quit"
+        controls = "  down soft   SPACE drop   C hold   Q quit"
         lines.append(colored(controls, COLORS["text"]))
     return lines
 
@@ -91,7 +108,7 @@ def main() -> None:
             if Key.Q in keys or Key.ESCAPE in keys:
                 running = False
             if Key.R in keys:
-                game = Game()
+                game = Game(rules=rules)
 
             for key in keys:
                 if action := ACTION_KEYS.get(key):
