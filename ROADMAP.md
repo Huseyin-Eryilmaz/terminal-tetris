@@ -58,10 +58,10 @@ live, and `Q` quits leaving the terminal usable.
 - [X] Mode selection, controls screen, pause, game-over summary
 - [X] High scores persisted to JSON (stdlib only)
 
-## Phase 7 — Showcase `v1.0.0`
-- [ ] README: architecture, rule comparison, SRS writeup
-- [ ] Terminal gameplay GIF
-- [ ] Release notes, About + topics
+## Phase 7 — Showcase `v1.0.0` ✅
+- [X] README: architecture, rule comparison, SRS writeup
+- [X] Terminal gameplay GIF
+- [X] Release notes, About + topics
 
 ## Beyond 1.0 (ideas)
 - Replay recording (seeded RNG makes runs reproducible)
