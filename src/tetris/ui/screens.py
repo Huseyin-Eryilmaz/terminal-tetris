@@ -11,6 +11,7 @@ from tetris.core.app import App, Screen
 from tetris.core.constants import BOARD_WIDTH
 from tetris.core.game import Game
 from tetris.core.highscores import HighScore
+from tetris.core.piece import SHAPES
 from tetris.ui.renderer import BLOCK, COLORS, EMPTY, colored
 
 GHOST_CELL = "░░"
@@ -20,6 +21,71 @@ TITLE = [
     "  ▀█▀ █▀▀ ▀█▀ █▀█ █ █▀",
     "   █  ██▄  █  █▀▄ █ ▄█",
 ]
+
+
+def piece_rows(kind: str, width_cells: int = 4) -> list[str]:
+    """Draws one tetromino in its spawn shape, as a small block of text.
+
+    Two bits of tidying: rows the piece does not occupy are trimmed, so a
+    flat I is one line rather than four; and the shape is centred in a
+    fixed-width box, because pieces are 2 to 4 cells wide and left-aligning
+    them all would leave the O looking as if it had drifted.
+    """
+    offsets = set(SHAPES[kind][0])
+    rows_used = sorted({row for row, _ in offsets})
+    cols_used = {col for _, col in offsets}
+    left, right = min(cols_used), max(cols_used)
+
+    piece_width = right - left + 1
+    pad_left = (width_cells - piece_width) // 2
+
+    lines = []
+    for row in rows_used:
+        cells = "  " * pad_left
+        for col in range(left, right + 1):
+            if (row, col) in offsets:
+                cells += colored(BLOCK, COLORS[kind])
+            else:
+                cells += "  "
+        cells += "  " * (width_cells - piece_width - pad_left)
+        lines.append(cells)
+    return lines
+
+
+def _labelled_box(title: str, kinds: list[str], inner_width: int = 8) -> list[str]:
+    """A titled box containing zero or more drawn pieces, stacked."""
+    top = "┌" + f" {title} ".center(inner_width, "─") + "┐"
+    lines = [colored(top, COLORS["frame"])]
+    border = colored("│", COLORS["frame"])
+
+    if not kinds:
+        lines.append(border + " " * inner_width + border)
+    for index, kind in enumerate(kinds):
+        for row in piece_rows(kind):
+            padding = " " * (inner_width - 8)
+            lines.append(border + row + padding + border)
+        if index != len(kinds) - 1:
+            lines.append(border + " " * inner_width + border)
+
+    lines.append(colored("└" + "─" * inner_width + "┘", COLORS["frame"]))
+    return lines
+
+
+def _side_by_side(left: list[str], right: list[str], gap: str = "  ") -> list[str]:
+    """Joins two blocks of lines horizontally.
+
+    The left block is the field, whose lines contain colour escapes, so
+    its printed width cannot be measured with len(). It does not need to
+    be: the field is always the taller block and every one of its lines
+    is the same width, so the right block simply starts after it.
+    """
+    height = max(len(left), len(right))
+    rows = []
+    for index in range(height):
+        left_line = left[index] if index < len(left) else " " * (FIELD_WIDTH + 2)
+        right_line = right[index] if index < len(right) else ""
+        rows.append(left_line + gap + right_line)
+    return rows
 
 
 def _panel(title: str, width: int = FIELD_WIDTH) -> str:
@@ -97,9 +163,6 @@ def render_hud(game: Game) -> list[str]:
         colored(f"  LEVEL  {scorer.level}", COLORS["text"]),
         colored(f"  LINES  {scorer.lines_cleared}", COLORS["text"]),
     ]
-    if game.rules.allow_hold:
-        lines.append(colored(f"  HOLD   {game.hold or '-'}", COLORS["text"]))
-    lines.append(colored(f"  NEXT   {' '.join(game.queue.preview())}", COLORS["text"]))
 
     event = game.last_event
     headline = event.describe() if event else ""
@@ -107,9 +170,23 @@ def render_hud(game: Game) -> list[str]:
     return lines
 
 
+def render_side_panel(game: Game) -> list[str]:
+    """The boxes beside the field: what is coming, and what is stashed."""
+    lines = _labelled_box("NEXT", game.queue.preview())
+    if game.rules.allow_hold:
+        lines.append("")
+        lines += _labelled_box("HOLD", [game.hold] if game.hold else [])
+    return lines
+
+
+def _render_field_with_panel(game: Game) -> list[str]:
+    return _side_by_side(render_field(game), render_side_panel(game))
+
+
 def render_playing(app: App) -> list[str]:
     assert app.game is not None
-    lines = [""] + render_field(app.game) + [""] + render_hud(app.game)
+    lines = [""] + _render_field_with_panel(app.game) + [""]
+    lines += render_hud(app.game)
     lines.append(colored("  P pause   ESC menu   Q quit", COLORS["frame"]))
     return lines
 
@@ -117,7 +194,8 @@ def render_playing(app: App) -> list[str]:
 def render_paused(app: App) -> list[str]:
     """The frozen field, with the pause notice replacing the controls."""
     assert app.game is not None
-    lines = [""] + render_field(app.game) + [""] + render_hud(app.game)
+    lines = [""] + _render_field_with_panel(app.game) + [""]
+    lines += render_hud(app.game)
     lines.append(colored("  PAUSED — P resume   ESC menu   Q quit", COLORS["accent"]))
     return lines
 
