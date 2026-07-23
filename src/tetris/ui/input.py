@@ -8,11 +8,9 @@ that — it blocks until Enter.
 So each platform gets its own reader, hidden behind `KeyReader.read()`,
 which answers one question: "which keys arrived since I last asked?"
 
-- Windows: `msvcrt.kbhit()` tells us whether a keystroke is waiting; we
-  drain them all with `getch()`.
-- Unix: the terminal normally hands over input line by line, with echo.
-  We switch it to "cbreak" mode (raw, no echo, no line buffering) and use
-  `select()` with a zero timeout to poll without blocking.
+Both are decoded into the same `Key` enum (which lives in
+`core`, since it is a game concept), so the rest of the game never learns
+which OS it is on.
 
 Arrow keys are the awkward part: they aren't characters. Windows sends a
 two-byte sequence (0x00 or 0xE0, then a code); Unix sends an ANSI escape
@@ -25,32 +23,8 @@ rest of the game never learns which OS it is on.
 from __future__ import annotations
 
 import sys
-from enum import Enum, auto
 
-
-class Key(Enum):
-    """Every input the game understands, independent of platform encoding."""
-
-    LEFT = auto()
-    RIGHT = auto()
-    UP = auto()
-    DOWN = auto()
-    SPACE = auto()
-    ENTER = auto()
-    ESCAPE = auto()
-    Z = auto()
-    X = auto()
-    C = auto()
-    P = auto()
-    Q = auto()
-    R = auto()
-
-    # Digits, for menu selection.
-    D1 = auto()
-    D2 = auto()
-    D3 = auto()
-    D4 = auto()
-
+from tetris.core.keys import Key
 
 _CHAR_KEYS = {
     " ": Key.SPACE,
