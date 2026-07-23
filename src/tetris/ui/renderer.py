@@ -32,6 +32,7 @@ CLEAR_SCREEN = f"{ESC}2J"
 HIDE_CURSOR = f"{ESC}?25l"
 SHOW_CURSOR = f"{ESC}?25h"
 RESET = f"{ESC}0m"
+ERASE_BELOW = f"{ESC}J"  # clear from the cursor to the bottom of the screen
 
 # 256-colour palette entries, one per tetromino, plus UI shades.
 COLORS = {
@@ -78,22 +79,24 @@ class Screen:
     def draw(self, lines: list[str]) -> None:
         """Prints one frame: cursor home, then every line, in a single write.
 
-        Two details keep the frame pinned in place:
+        Three details keep the picture clean:
 
         - Lines are separated by `\\r\\n`, not `\\n`: in cbreak mode the
           terminal does not translate a newline into a carriage return, so
           a bare `\\n` moves down a row while leaving the cursor in the
-          same column.
-        - The last line has no trailing newline at all. Ending a frame
-          with one pushes the cursor past the bottom of the screen, the
-          terminal scrolls, and "cursor home" then points somewhere above
-          the frame — so the next frame lands underneath the previous one
-          instead of on top of it.
+          same column, and the frame drifts diagonally.
+        - The frame is clipped to the terminal's height and never ends
+          with a newline. Overflowing the last row makes the terminal
+          scroll, and once it scrolls, "cursor home" points above the
+          frame — so each frame lands below the previous one.
+        - Everything below the frame is erased. Otherwise a short screen
+          (the game-over summary) drawn over a tall one (the playing
+          field) leaves the bottom half of the old frame on display.
         """
         height = shutil.get_terminal_size(fallback=(80, 24)).lines
         visible = lines[: height - 1]
         body = "\r\n".join(f"{line}{ESC}K" for line in visible)
-        sys.stdout.write(CURSOR_HOME + body)
+        sys.stdout.write(CURSOR_HOME + body + ERASE_BELOW)
         sys.stdout.flush()
 
 
