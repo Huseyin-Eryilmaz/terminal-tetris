@@ -53,10 +53,10 @@ live, and `Q` quits leaving the terminal usable.
 
 **Acceptance:** each mechanic unit-tested; scoring matches the table.
 
-## Phase 6 — Menu & polish `v0.5.0`
-- [ ] Menu state machine: MENU → PLAYING → PAUSED → GAME_OVER → MENU
-- [ ] Mode selection, controls screen, pause, game-over summary
-- [ ] High scores persisted to JSON (stdlib only)
+## Phase 6 — Menu & polish `v0.5.0` ✅
+- [X] Menu state machine: MENU → PLAYING → PAUSED → GAME_OVER → MENU
+- [X] Mode selection, controls screen, pause, game-over summary
+- [X] High scores persisted to JSON (stdlib only)
 
 ## Phase 7 — Showcase `v1.0.0`
 - [ ] README: architecture, rule comparison, SRS writeup
